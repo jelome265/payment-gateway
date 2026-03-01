@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: Payment Gateway API
+  description: Core API for the Malawian payment gateway
+  version: 1.0.0
+servers:
+  - url: https://api.sandbox.payments.co.mw
+paths:
+  /v1/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK

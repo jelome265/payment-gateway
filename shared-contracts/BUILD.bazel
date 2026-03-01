@@ -1,0 +1,30 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "payment_proto",
+    srcs = ["protobuf/payment.proto"],
+)
+
+proto_library(
+    name = "settlement_proto",
+    srcs = ["protobuf/settlement.proto"],
+)
+
+proto_library(
+    name = "webhook_proto",
+    srcs = ["protobuf/webhook.proto"],
+)
+
+# Genrules for stub generation (Java, Rust, Go, Node)
+genrule(
+    name = "gen_all",
+    srcs = [
+         "protobuf/payment.proto",
+         "protobuf/settlement.proto",
+         "protobuf/webhook.proto"
+    ],
+    outs = ["gen_stubs_dummy.txt"], # Placeholder for actual protoc invocation
+    cmd = "echo 'Stub generation complete' > $@",
+)

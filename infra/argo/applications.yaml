@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payments-core
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jelome265/payment-gateway.git
+    targetRevision: HEAD
+    path: infra/k8s/platform-java
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: connectors
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jelome265/payment-gateway.git
+    targetRevision: HEAD
+    path: infra/k8s/connectors-go
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

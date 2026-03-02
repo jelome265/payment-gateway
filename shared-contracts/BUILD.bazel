@@ -2,7 +2,7 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 
 sh_binary(
     name = "commit",
-    srcs = ["scripts/bazel_commit.sh"],
+    srcs = ["scripts/bazel_commit.bat", "scripts/bazel_commit.ps1"],
     visibility = ["//visibility:public"],
 )
 
@@ -24,4 +24,9 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
-
+# Exporting for other workspaces
+filegroup(
+    name = "protos",
+    srcs = glob(["proto/*.proto"]),
+    visibility = ["//visibility:public"],
+)

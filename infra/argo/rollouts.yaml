@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: platform-java-rollout
+spec:
+  replicas: 3
+  strategy:
+    canary:
+      steps:
+        - setWeight: 10
+        - pause: { duration: 10m }
+        - setWeight: 50
+        - pause: { duration: 30m }
+  selector:
+    matchLabels:
+      app: platform-java
+  template:
+    metadata:
+      labels:
+        app: platform-java
+    spec:
+      containers:
+        - name: platform-java
+          image: payments-core:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: connectors-go-rollout
+spec:
+  replicas: 2
+  strategy:
+    canary:
+      steps:
+        - setWeight: 20
+        - pause: { duration: 5m }
+  selector:
+    matchLabels:
+      app: connectors-go
+  template:
+    metadata:
+      labels:
+        app: connectors-go
+    spec:
+      containers:
+        - name: connectors-go
+          image: connectors:latest
+          ports:
+            - containerPort: 9090

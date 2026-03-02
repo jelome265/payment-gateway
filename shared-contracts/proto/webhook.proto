@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package com.company.payments.shared;
+
+option java_multiple_files = true;
+option java_package = "com.company.payments.shared.proto";
+
+message WebhookPayload {
+    string event_id = 1;
+    string provider = 2;
+    bytes payload = 3;
+    string signature = 4;
+    int64 timestamp = 5;
+}

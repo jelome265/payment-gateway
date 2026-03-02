@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package com.company.payments.shared;
+
+option java_multiple_files = true;
+option java_package = "com.company.payments.shared.proto";
+
+message PaymentRequest {
+    string request_id = 1;
+    string wallet_id = 2;
+    double amount = 3;
+    string currency = 4;
+    string idempotency_key = 5;
+}
+
+message PaymentResponse {
+    string transaction_id = 1;
+    string status = 2;
+    string message = 3;
+}

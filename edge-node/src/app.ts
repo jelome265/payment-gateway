@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import webhookRoutes from './routes/webhook';
+import kycRoutes from './routes/kyc';
 import './workers/kafkaProducer'; // Initialize the BullMQ background worker
 
 dotenv.config();
@@ -16,6 +17,7 @@ app.use(express.json({
 }));
 
 app.use('/webhooks', webhookRoutes);
+app.use('/api/v1/kyc', kycRoutes);
 
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });

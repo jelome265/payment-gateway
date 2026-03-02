@@ -1,0 +1,161 @@
+package acquirers
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/jelome265/connectors-go/internal/workers"
+)
+
+// TnmAdapter handles collection/disbursement via TNM Mpamba APIs.
+// Supports mTLS transport and HMAC request signing.
+type TnmAdapter struct {
+	baseURL    string
+	apiKey     string
+	apiSecret  string
+	httpClient *http.Client
+	retryConf  workers.RetryConfig
+	poisonQ    *workers.PoisonQueue
+}
+
+// NewTnmAdapter creates a new TNM connector.
+func NewTnmAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath string) (*TnmAdapter, error) {
+	tlsConfig, err := buildMTLSConfig(certPath, keyPath, caPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build mTLS config for TNM: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+
+	return &TnmAdapter{
+		baseURL:    baseURL,
+		apiKey:     apiKey,
+		apiSecret:  apiSecret,
+		httpClient: client,
+		retryConf:  workers.DefaultRetryConfig(),
+		poisonQ:    &workers.PoisonQueue{Topic: "tnm-poison-queue"},
+	}, nil
+}
+
+// TnmDepositRequest represents a deposit/collection request to TNM Mpamba.
+type TnmDepositRequest struct {
+	Reference string  `json:"reference"`
+	MSISDN    string  `json:"msisdn"`
+	Amount    float64 `json:"amount"`
+	Currency  string  `json:"currency"`
+	Narration string  `json:"narration"`
+}
+
+// TnmDepositResponse represents the TNM API response.
+type TnmDepositResponse struct {
+	TransactionID string `json:"transaction_id"`
+	Status        string `json:"status"`
+	Message       string `json:"message"`
+}
+
+// InitiateDeposit sends a collection request to TNM Mpamba.
+// Uses at-least-once delivery with deduplication by reference/event_id.
+func (t *TnmAdapter) InitiateDeposit(req TnmDepositRequest) (*TnmDepositResponse, error) {
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal TNM request: %w", err)
+	}
+
+	var resp TnmDepositResponse
+	err = workers.WithRetry("tnm-deposit", t.retryConf, func() error {
+		httpReq, err := http.NewRequest("POST", t.baseURL+"/api/v1/collections", bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+
+		signature := t.signPayload(payload)
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+t.apiKey)
+		httpReq.Header.Set("X-Signature", signature)
+		httpReq.Header.Set("X-Idempotency-Key", req.Reference)
+
+		httpResp, err := t.httpClient.Do(httpReq)
+		if err != nil {
+			return fmt.Errorf("TNM HTTP request failed: %w", err)
+		}
+		defer httpResp.Body.Close()
+
+		body, err := io.ReadAll(httpResp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read TNM response: %w", err)
+		}
+
+		if httpResp.StatusCode >= 500 {
+			return fmt.Errorf("TNM server error %d: %s", httpResp.StatusCode, string(body))
+		}
+
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return fmt.Errorf("failed to parse TNM response: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		t.poisonQ.Send("tnm-deposit", payload, err)
+		return nil, err
+	}
+
+	log.Printf("[TNM] Deposit initiated: ref=%s tx_id=%s", req.Reference, resp.TransactionID)
+	return &resp, nil
+}
+
+// DownloadStatement retrieves settlement statements for reconciliation.
+func (t *TnmAdapter) DownloadStatement(date string) ([]byte, error) {
+	var result []byte
+	err := workers.WithRetry("tnm-statement", t.retryConf, func() error {
+		url := fmt.Sprintf("%s/api/v1/statements?date=%s", t.baseURL, date)
+		httpReq, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
+
+		httpReq.Header.Set("Authorization", "Bearer "+t.apiKey)
+		httpReq.Header.Set("X-Signature", t.signPayload([]byte(date)))
+
+		httpResp, err := t.httpClient.Do(httpReq)
+		if err != nil {
+			return fmt.Errorf("TNM statement download failed: %w", err)
+		}
+		defer httpResp.Body.Close()
+
+		body, err := io.ReadAll(httpResp.Body)
+		if err != nil {
+			return err
+		}
+
+		if httpResp.StatusCode != 200 {
+			return fmt.Errorf("TNM statement API error %d: %s", httpResp.StatusCode, string(body))
+		}
+
+		result = body
+		return nil
+	})
+
+	return result, err
+}
+
+// signPayload creates HMAC-SHA256 signature.
+func (t *TnmAdapter) signPayload(payload []byte) string {
+	mac := hmac.New(sha256.New, []byte(t.apiSecret))
+	mac.Write(payload)
+	return hex.EncodeToString(mac.Sum(nil))
+}

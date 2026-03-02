@@ -1,0 +1,22 @@
+load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+load("@io_bazel_rules_docker//nodejs:image.bzl", "nodejs_image")
+
+sh_binary(
+    name = "commit",
+    srcs = ["scripts/bazel_commit.sh"],
+    visibility = ["//visibility:public"],
+)
+
+nodejs_binary(
+    name = "server",
+    entry_point = ":src/app.ts",
+    data = glob(["src/**/*.ts", "package.json", "tsconfig.json"]),
+)
+
+nodejs_image(
+    name = "image",
+    binary = ":server",
+    visibility = ["//visibility:public"],
+)
+
+

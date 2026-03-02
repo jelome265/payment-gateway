@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@io_bazel_rules_docker//go:image.bzl", "go_image")
+
+sh_binary(
+    name = "commit",
+    srcs = ["scripts/bazel_commit.sh"],
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "connectors-lib",
+    srcs = glob(["internal/**/*.go"]),
+    importpath = "github.com/jelome265/connectors-go/internal",
+    deps = [
+        "@com_github_confluentinc_confluent_kafka_go_v2//kafka",
+    ],
+)
+
+go_binary(
+    name = "server",
+    srcs = ["cmd/server/main.go"],
+    deps = [":connectors-lib"],
+)
+
+go_image(
+    name = "image",
+    binary = ":server",
+    visibility = ["//visibility:public"],
+)
+
+

@@ -1,0 +1,20 @@
+# WarmHeart API V1 Reference
+
+## Base URL
+- Production: `https://api.warmheart.mw/v1`
+- Sandbox: `https://api.sandbox.warmheart.mw/v1`
+
+## Authentication
+Bearer tokens via JWT. Webhooks use HMAC-SHA256 signatures.
+
+## Endpoints
+
+### Charges
+`POST /charges` - Create a new payment.
+`GET /charges/{id}` - Retrieve charge status.
+
+### Refunds
+`POST /refunds` - Request a refund.
+
+### Customers
+`POST /customers` - Create a customer profile.

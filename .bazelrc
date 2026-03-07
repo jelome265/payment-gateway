@@ -1,0 +1,15 @@
+# Bazel configuration for WarmHeart monorepo
+
+# Enable Bzlmod for modern dependency management
+common --enable_bzlmod
+
+# Build options
+build --java_language_version=21
+build --toolchain_resolution_debug=true
+
+# Test options
+test --test_output=errors
+test --test_summary=detailed
+
+# Remote caching (placeholder for CI)
+# build --remote_cache=grpc://localhost:9092

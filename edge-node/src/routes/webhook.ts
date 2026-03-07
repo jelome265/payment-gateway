@@ -1,14 +1,24 @@
 import { Router, Request, Response } from 'express';
 import { verifyWebhookSignature } from '../middleware/auth';
 import { enqueueWebhook } from '../workers/queue';
+import { DepositWebhookSchema } from '../validation/webhookSchemas';
 
 const router = Router();
 
 // Endpoint for Airtel / Bank / Marqeta Webhooks
-router.post('/deposit', verifyWebhookSignature, async (req: Request, res: Response) => {
+router.post('/deposit', verifyWebhookSignature, async (req: Request, res: Response): Promise<void> => {
     try {
         const idempotencyKey = (req as any).idempotencyKey;
-        const payload = req.body;
+
+        // Input Validation (Zod)
+        const parsedBody = DepositWebhookSchema.safeParse(req.body);
+        if (!parsedBody.success) {
+            console.error('[edge-node] Invalid webhook payload discarded', parsedBody.error.format());
+            res.status(400).json({ error: 'Invalid payload structure', details: parsedBody.error.format() });
+            return;
+        }
+
+        const payload = parsedBody.data;
 
         // Enqueue job with idempotency key
         await enqueueWebhook(payload, idempotencyKey);

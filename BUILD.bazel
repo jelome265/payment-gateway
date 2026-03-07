@@ -1,0 +1,5 @@
+sh_binary(
+    name = "commit_all",
+    srcs = ["scripts/commit_all.sh"],
+    visibility = ["//visibility:public"],
+)

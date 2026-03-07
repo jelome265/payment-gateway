@@ -1,0 +1,48 @@
+name: Docker Build & Push
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+jobs:
+    build_containers:
+        name: Build Containers (${{ matrix.repo }})
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                repo:
+                    - platform-java
+                    - edge-node
+                    - connectors-go
+                    - payments-core-rust
+                    - crypto-engine-c
+
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
+
+            - name: Setup Bazel
+              uses: bazelbuild/setup-bazelisk@v2
+
+            - name: Mount Bazel Cache
+              uses: actions/cache@v3
+              with:
+                  path: "~/.cache/bazel"
+                  key: ${{ runner.os }}-bazel-docker-${{ matrix.repo }}-${{ hashFiles(format('{0}/BUILD.bazel', matrix.repo), format('{0}/**/*.bzl', matrix.repo), format('{0}/WORKSPACE', matrix.repo)) }}
+                  restore-keys: |
+                      ${{ runner.os }}-bazel-docker-${{ matrix.repo }}-
+
+            - name: Login to DockerHub
+              uses: docker/login-action@v2
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: Build and Push Docker Image
+              run: |
+                  cd ${{ matrix.repo }}
+                  # Assuming each repo has a //:image or //src:image target defined via rules_oci or rules_docker
+                  # The exact target name might need adjusting per-repo based on the WORKSPACE
+                  bazel run //...:image -- --push

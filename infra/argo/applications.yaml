@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: payments-core
+  name: platform-java
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/jelome265/payment-gateway.git
     targetRevision: HEAD
-    path: infra/k8s/platform-java
+    path: infra/kubernetes/platform-java
   destination:
     server: https://kubernetes.default.svc
     namespace: payments
@@ -20,14 +20,71 @@ spec:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: connectors
+  name: connectors-go
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/jelome265/payment-gateway.git
     targetRevision: HEAD
-    path: infra/k8s/connectors-go
+    path: infra/kubernetes/connectors-go
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crypto-engine-c
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jelome265/payment-gateway.git
+    targetRevision: HEAD
+    path: infra/kubernetes/crypto-engine-c
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payments-core-rust
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jelome265/payment-gateway.git
+    targetRevision: HEAD
+    path: infra/kubernetes/payments-core-rust
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: edge-node
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jelome265/payment-gateway.git
+    targetRevision: HEAD
+    path: infra/kubernetes/edge-node
   destination:
     server: https://kubernetes.default.svc
     namespace: payments

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -83,5 +84,10 @@ func (a *KycAdapter) post(endpoint string, payload interface{}) ([]byte, error) 
 		return nil, fmt.Errorf("provider returned status: %d", resp.StatusCode)
 	}
 
-	return nil, nil // Placeholder
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return body, nil
 }

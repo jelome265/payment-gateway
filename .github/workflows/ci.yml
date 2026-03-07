@@ -1,4 +1,4 @@
-name: CI
+name: CI Pipeline
 
 on:
     push:
@@ -8,9 +8,48 @@ on:
 
 jobs:
     build_and_test:
+        name: Build & Test (${{ matrix.repo }})
         runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                repo:
+                    - platform-java
+                    - edge-node
+                    - connectors-go
+                    - payments-core-rust
+                    - crypto-engine-c
+
         steps:
-            - uses: actions/checkout@v3
+            - name: Checkout Code
+              uses: actions/checkout@v3
+
+            - name: Setup Node (For Edge-Node/Tests)
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 20
+              if: matrix.repo == 'edge-node'
+
+            - name: Setup Go (For Connectors-Go)
+              uses: actions/setup-go@v4
+              with:
+                  go-version: "1.21"
+              if: matrix.repo == 'connectors-go'
+
+            - name: Setup Rust (For Payments-Core-Rust)
+              uses: actions-rs/toolchain@v1
+              with:
+                  toolchain: stable
+                  profile: minimal
+                  override: true
+              if: matrix.repo == 'payments-core-rust'
+
+            - name: Setup Java (For Platform-Java)
+              uses: actions/setup-java@v3
+              with:
+                  distribution: "temurin"
+                  java-version: "21"
+              if: matrix.repo == 'platform-java'
 
             - name: Setup Bazel
               uses: bazelbuild/setup-bazelisk@v2
@@ -19,9 +58,11 @@ jobs:
               uses: actions/cache@v3
               with:
                   path: "~/.cache/bazel"
-                  key: ${{ runner.os }}-bazel-${{ hashFiles('**/BUILD.bazel', '**/*.bzl', 'WORKSPACE') }}
+                  key: ${{ runner.os }}-bazel-${{ matrix.repo }}-${{ hashFiles(format('{0}/BUILD.bazel', matrix.repo), format('{0}/**/*.bzl', matrix.repo), format('{0}/WORKSPACE', matrix.repo)) }}
                   restore-keys: |
-                      ${{ runner.os }}-bazel-
+                      ${{ runner.os }}-bazel-${{ matrix.repo }}-
 
-            - name: Build & Test
-              run: ./bazel_ci.sh
+            - name: Bazel Test ${{ matrix.repo }}
+              run: |
+                  cd ${{ matrix.repo }}
+                  bazel test //... --test_output=errors

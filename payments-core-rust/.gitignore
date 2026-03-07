@@ -1,5 +1,13 @@
-/target
+# Bazel symlinks
+/bazel-*
+
+# Rust build outputs
+target/
 **/*.rs.bk
+
+# Cargo
 Cargo.lock
-.DS_Store
-bazel-*
+
+# IDEs
+.idea/
+.vscode/

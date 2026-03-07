@@ -1,4 +1,8 @@
-/bin/
+# Bazel symlinks
+/bazel-*
+
+# Go build outputs
+bin/
 *.exe
 *.exe~
 *.dll
@@ -6,5 +10,10 @@
 *.dylib
 *.test
 *.out
-.DS_Store
-bazel-*
+
+# Environment variables
+.env
+
+# IDEs
+.idea/
+.vscode/

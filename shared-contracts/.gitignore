@@ -1,2 +1,13 @@
-bazel-*
-.DS_Store
+# Bazel symlinks
+/bazel-*
+
+# Generated source code
+*.pb.go
+*.pb.cc
+*.pb.h
+*pb2.py
+*.java
+
+# IDEs
+.idea/
+.vscode/

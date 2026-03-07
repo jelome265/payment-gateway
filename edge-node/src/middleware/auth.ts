@@ -41,7 +41,11 @@ export const verifyWebhookSignature = (req: Request, res: Response, next: NextFu
     hmac.update(rawBody);
     const computedSignature = hmac.digest('hex');
 
-    if (computedSignature !== signature) {
+    // Timing-safe comparison to prevent timing side-channel attacks
+    const computedBuf = Buffer.from(computedSignature, 'hex');
+    const signatureBuf = Buffer.from(signature, 'hex');
+
+    if (computedBuf.length !== signatureBuf.length || !crypto.timingSafeEqual(computedBuf, signatureBuf)) {
         res.status(401).json({ error: 'Invalid webhook signature' });
         return;
     }

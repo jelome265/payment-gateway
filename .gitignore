@@ -1,0 +1,61 @@
+# Environment and secrets
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.p12
+*.jks
+*.pfx
+*.crt
+
+# Bazel
+bazel-bin/
+bazel-out/
+bazel-testlogs/
+bazel-platform-java/
+bazel-crypto-engine-c/
+bazel-connectors-go/
+bazel-edge-node/
+bazel-payments-core-rust/
+bazel-shared-contracts/
+/bazel-*
+
+# Java
+target/
+*.class
+*.jar
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Go
+vendor/
+
+# Rust
+payments-core-rust/target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+*.log
+tmp/

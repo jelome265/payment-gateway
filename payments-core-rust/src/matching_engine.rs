@@ -10,9 +10,9 @@ pub struct Order {
     pub id: String,
     pub user_id: String,
     pub side: Side,
-    pub price: f64,      // Exchange rate
-    pub quantity: f64,    // Amount in sell currency
-    pub remaining: f64,
+    pub price: i64,      // Exchange rate in integer basis points
+    pub quantity: i64,    // Amount in minimum indivisible units (e.g. cents)
+    pub remaining: i64,
     pub timestamp: u64,
 }
 
@@ -26,8 +26,8 @@ pub enum Side {
 pub struct Trade {
     pub buy_order_id: String,
     pub sell_order_id: String,
-    pub price: f64,
-    pub quantity: f64,
+    pub price: i64,
+    pub quantity: i64,
     pub timestamp: u64,
 }
 
@@ -82,7 +82,7 @@ impl Orderbook {
                 // Match against asks (lowest price first)
                 let mut matched_keys = Vec::new();
                 for (key, ask) in self.asks.iter_mut() {
-                    if order.remaining <= 0.0 {
+                    if order.remaining <= 0 {
                         break;
                     }
                     if order.price >= ask.price {
@@ -96,7 +96,7 @@ impl Orderbook {
                         });
                         order.remaining -= fill_qty;
                         ask.remaining -= fill_qty;
-                        if ask.remaining <= 0.0 {
+                        if ask.remaining <= 0 {
                             matched_keys.push(key.clone());
                         }
                     } else {
@@ -107,9 +107,9 @@ impl Orderbook {
                     self.asks.remove(&key);
                 }
                 // If order has remaining quantity, add as resting bid
-                if order.remaining > 0.0 {
+                if order.remaining > 0 {
                     let key = OrderKey {
-                        price_cents: -(order.price * 10000.0) as i64, // Negate for descending sort
+                        price_cents: -order.price, // Negate for descending sort
                         timestamp: order.timestamp,
                         id: order.id.clone(),
                     };
@@ -120,10 +120,10 @@ impl Orderbook {
                 // Match against bids (highest price first)
                 let mut matched_keys = Vec::new();
                 for (key, bid) in self.bids.iter_mut() {
-                    if order.remaining <= 0.0 {
+                    if order.remaining <= 0 {
                         break;
                     }
-                    let bid_price = -(key.price_cents as f64) / 10000.0;
+                    let bid_price = -key.price_cents;
                     if order.price <= bid_price {
                         let fill_qty = order.remaining.min(bid.remaining);
                         trades.push(Trade {
@@ -135,7 +135,7 @@ impl Orderbook {
                         });
                         order.remaining -= fill_qty;
                         bid.remaining -= fill_qty;
-                        if bid.remaining <= 0.0 {
+                        if bid.remaining <= 0 {
                             matched_keys.push(key.clone());
                         }
                     } else {
@@ -145,9 +145,9 @@ impl Orderbook {
                 for key in matched_keys {
                     self.bids.remove(&key);
                 }
-                if order.remaining > 0.0 {
+                if order.remaining > 0 {
                     let key = OrderKey {
-                        price_cents: (order.price * 10000.0) as i64,
+                        price_cents: order.price,
                         timestamp: order.timestamp,
                         id: order.id.clone(),
                     };
@@ -174,7 +174,7 @@ mod tests {
         // Seller posts at 1000 MWK/USD
         let sell = Order {
             id: "s1".into(), user_id: "seller1".into(),
-            side: Side::Sell, price: 1000.0, quantity: 100.0, remaining: 100.0, timestamp: 0,
+            side: Side::Sell, price: 10000000, quantity: 10000, remaining: 10000, timestamp: 0,
         };
         let trades = book.submit_order(sell);
         assert!(trades.is_empty());
@@ -183,11 +183,11 @@ mod tests {
         // Buyer bids at 1000 MWK/USD
         let buy = Order {
             id: "b1".into(), user_id: "buyer1".into(),
-            side: Side::Buy, price: 1000.0, quantity: 100.0, remaining: 100.0, timestamp: 0,
+            side: Side::Buy, price: 10000000, quantity: 10000, remaining: 10000, timestamp: 0,
         };
         let trades = book.submit_order(buy);
         assert_eq!(trades.len(), 1);
-        assert_eq!(trades[0].quantity, 100.0);
+        assert_eq!(trades[0].quantity, 10000);
         assert_eq!(book.ask_count(), 0);
         assert_eq!(book.bid_count(), 0);
     }
@@ -198,17 +198,65 @@ mod tests {
 
         let sell = Order {
             id: "s1".into(), user_id: "seller1".into(),
-            side: Side::Sell, price: 1000.0, quantity: 200.0, remaining: 200.0, timestamp: 0,
+            side: Side::Sell, price: 10000000, quantity: 20000, remaining: 20000, timestamp: 0,
         };
         book.submit_order(sell);
 
         let buy = Order {
             id: "b1".into(), user_id: "buyer1".into(),
-            side: Side::Buy, price: 1000.0, quantity: 50.0, remaining: 50.0, timestamp: 0,
+            side: Side::Buy, price: 10000000, quantity: 5000, remaining: 5000, timestamp: 0,
         };
         let trades = book.submit_order(buy);
         assert_eq!(trades.len(), 1);
-        assert_eq!(trades[0].quantity, 50.0);
-        assert_eq!(book.ask_count(), 1); // 150 remaining on the ask
+        assert_eq!(trades[0].quantity, 5000);
+        assert_eq!(book.ask_count(), 1); // 15000 remaining on the ask
+    }
+
+    #[test]
+    fn test_price_time_priority() {
+        let mut book = Orderbook::new("USD/MWK");
+
+        // Seller 1 posts an ask at 1000 MWK/USD
+        book.submit_order(Order {
+            id: "s1".into(), user_id: "seller1".into(),
+            side: Side::Sell, price: 10000000, quantity: 10000, remaining: 10000, timestamp: 0,
+        });
+
+        // Seller 2 posts an ask at a BETTER price 900 MWK/USD
+        book.submit_order(Order {
+            id: "s2".into(), user_id: "seller2".into(),
+            side: Side::Sell, price: 9000000, quantity: 10000, remaining: 10000, timestamp: 0,
+        });
+
+        // Buyer comes in willing to pay 1000 MWK/USD, should match with Seller 2 first (best price)
+        let trades = book.submit_order(Order {
+            id: "b1".into(), user_id: "buyer1".into(),
+            side: Side::Buy, price: 10000000, quantity: 10000, remaining: 10000, timestamp: 0,
+        });
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].sell_order_id, "s2");
+        assert_eq!(trades[0].price, 9000000); // Executed at the resting order's price
+    }
+
+    #[test]
+    fn test_no_match() {
+        let mut book = Orderbook::new("USD/MWK");
+
+        // Ask is at 1000
+        book.submit_order(Order {
+            id: "s1".into(), user_id: "seller1".into(),
+            side: Side::Sell, price: 10000000, quantity: 10000, remaining: 10000, timestamp: 0,
+        });
+
+        // Bid is at 900 (Too low)
+        let trades = book.submit_order(Order {
+            id: "b1".into(), user_id: "buyer1".into(),
+            side: Side::Buy, price: 9000000, quantity: 10000, remaining: 10000, timestamp: 0,
+        });
+
+        assert_eq!(trades.len(), 0);
+        assert_eq!(book.bid_count(), 1);
+        assert_eq!(book.ask_count(), 1);
     }
 }

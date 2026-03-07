@@ -1,63 +1,94 @@
 import { Request, Response, NextFunction } from 'express';
+import Redis from 'ioredis';
 
 /**
- * WAF-style rate limiting middleware.
- * Tracks request counts per IP in a sliding window.
- * Blocks IPs that exceed the threshold.
- * 
- * In production: use a distributed store (Redis) for multi-instance deployments.
+ * Redis-backed sliding window rate limiter.
+ * Uses Lua script for atomic increment + TTL to ensure
+ * rate limits persist across process restarts (multi-instance safe).
  */
 
-interface RateEntry {
-    count: number;
-    windowStart: number;
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+let redis: Redis;
+
+try {
+    redis = new Redis(REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 3 });
+} catch (err) {
+    console.error('[WAF] Failed to connect to Redis for rate limiting:', err);
 }
 
-const ipMap = new Map<string, RateEntry>();
-const WINDOW_MS = 60 * 1000;        // 1 minute window
-const MAX_REQUESTS = 100;            // Max requests per window per IP
-const BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minute block on threshold breach
+// Lua script for atomic sliding window rate limiting
+const SLIDING_WINDOW_LUA = `
+local key = KEYS[1]
+local window_ms = tonumber(ARGV[1])
+local max_requests = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local window_start = now - window_ms
 
-const blockedIPs = new Map<string, number>(); // IP -> unblock timestamp
+redis.call('ZREMRANGEBYSCORE', key, '-inf', window_start)
+local count = redis.call('ZCARD', key)
+
+if count >= max_requests then
+    return -1
+end
+
+redis.call('ZADD', key, now, now .. ':' .. math.random(1000000))
+redis.call('PEXPIRE', key, window_ms)
+return max_requests - count - 1
+`;
+
+interface RateLimitConfig {
+    windowMs: number;
+    maxRequests: number;
+    keyPrefix: string;
+}
+
+const ENDPOINT_LIMITS: Record<string, RateLimitConfig> = {
+    webhook: { windowMs: 60_000, maxRequests: 100, keyPrefix: 'rl:webhook:' },
+    auth: { windowMs: 60_000, maxRequests: 10, keyPrefix: 'rl:auth:' },
+    default: { windowMs: 60_000, maxRequests: 60, keyPrefix: 'rl:default:' },
+};
+
+function getEndpointCategory(path: string): string {
+    if (path.includes('/webhooks/') || path.includes('/webhook')) return 'webhook';
+    if (path.includes('/auth/')) return 'auth';
+    return 'default';
+}
 
 export function rateLimiter(req: Request, res: Response, next: NextFunction): void {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const now = Date.now();
+    const category = getEndpointCategory(req.path);
+    const config = ENDPOINT_LIMITS[category];
 
-    // Check if IP is currently blocked
-    const unblockAt = blockedIPs.get(ip);
-    if (unblockAt && now < unblockAt) {
-        console.warn(`[WAF] Blocked request from ${ip}. Unblocks at ${new Date(unblockAt).toISOString()}`);
-        res.status(429).json({
-            error: 'Too many requests. You have been temporarily blocked.',
-            retry_after_seconds: Math.ceil((unblockAt - now) / 1000)
-        });
-        return;
-    } else if (unblockAt) {
-        blockedIPs.delete(ip);
-    }
-
-    // Sliding window rate check
-    const entry = ipMap.get(ip);
-    if (!entry || now - entry.windowStart > WINDOW_MS) {
-        ipMap.set(ip, { count: 1, windowStart: now });
+    if (!redis) {
+        console.warn('[WAF] Redis not available — rate limiting disabled');
         next();
         return;
     }
 
-    entry.count++;
+    const key = config.keyPrefix + ip;
+    const now = Date.now();
 
-    if (entry.count > MAX_REQUESTS) {
-        console.warn(`[WAF] Rate limit exceeded for ${ip}: ${entry.count} requests in window`);
-        blockedIPs.set(ip, now + BLOCK_DURATION_MS);
-        res.status(429).json({
-            error: 'Rate limit exceeded',
-            retry_after_seconds: Math.ceil(BLOCK_DURATION_MS / 1000)
+    redis.eval(SLIDING_WINDOW_LUA, 1, key, config.windowMs, config.maxRequests, now)
+        .then((remaining) => {
+            const rem = remaining as number;
+            if (rem < 0) {
+                console.warn(`[WAF] Rate limit exceeded for ${ip} on ${category}: ${config.maxRequests}/${config.windowMs}ms`);
+                res.status(429).json({
+                    error: 'Rate limit exceeded',
+                    retry_after_seconds: Math.ceil(config.windowMs / 1000),
+                });
+                return;
+            }
+
+            res.setHeader('X-RateLimit-Remaining', Math.max(0, rem).toString());
+            res.setHeader('X-RateLimit-Limit', config.maxRequests.toString());
+            next();
+        })
+        .catch((err) => {
+            console.error('[WAF] Redis rate limit error:', err);
+            // Fail open — don't block requests if Redis is down
+            next();
         });
-        return;
-    }
-
-    next();
 }
 
 /**

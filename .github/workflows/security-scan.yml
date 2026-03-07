@@ -1,0 +1,38 @@
+name: Security Scanning
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+    schedule:
+        - cron: "0 0 * * *" # Daily at midnight
+
+jobs:
+    trivy_scan:
+        name: Trivy Container Scan (${{ matrix.repo }})
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                repo:
+                    - platform-java
+                    - edge-node
+                    - connectors-go
+                    - payments-core-rust
+                    - crypto-engine-c
+
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
+
+            - name: Run Trivy vulnerability scanner on Repo config
+              uses: aquasecurity/trivy-action@master
+              with:
+                  scan-type: "fs"
+                  scan-ref: ./${{ matrix.repo }}
+                  format: "table"
+                  exit-code: "1"
+                  ignore-unfixed: true
+                  vuln-type: "os,library"
+                  severity: "CRITICAL,HIGH"

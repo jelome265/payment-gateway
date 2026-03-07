@@ -1,9 +1,16 @@
+# Bazel symlinks
+/bazel-*
+
+# Node outputs
 node_modules/
 dist/
-build/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-.DS_Store
-bazel-*
+npm-debug.log
+yarn-error.log
+
+# Environment variables
+.env
+.env.local
+
+# IDEs
+.idea/
+.vscode/

@@ -8,7 +8,7 @@ option java_package = "com.company.payments.shared.proto";
 message PaymentRequest {
     string request_id = 1;
     string wallet_id = 2;
-    double amount = 3;
+    int64 amount = 3; // Amount in minor units (e.g. cents)
     string currency = 4;
     string idempotency_key = 5;
 }

@@ -1,0 +1,19 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@pip//:requirements.bzl", "requirement")
+
+py_library(
+    name = "fraud_lib",
+    srcs = glob(["src/**/*.py"]),
+    deps = [
+        requirement("fastapi"),
+        requirement("uvicorn"),
+        requirement("aiokafka"),
+        requirement("pandas"),
+    ],
+)
+
+py_binary(
+    name = "main",
+    srcs = ["src/main.py"],
+    deps = [":fraud_lib"],
+)

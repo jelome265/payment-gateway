@@ -1,0 +1,95 @@
+version: 1
+status: locked
+locked_on: "2026-03-02"
+execution_mode: one_step_at_a_time
+
+product_goal:
+  Deliver a production-grade Malawi payment gateway MVP with deterministic ledgering,
+  compliant card/token flows, KYC/AML controls, reconciliation, and operational readiness.
+
+in_scope:
+  - User onboarding with KYC decisioning levels (basic, enhanced, prohibited)
+  - Deposit ingestion from local rails (Airtel/TNM) via authenticated webhooks/connectors
+  - Append-only ledger entries as the financial source of truth
+  - Idempotency for all inbound external payment/webhook events
+  - Virtual card issuance via BIN sponsor tokenization (token + last4 + expiry only)
+  - P2P FX marketplace MVP using escrow + compensating transactions
+  - Automated reconciliation (real-time + daily batch statement matching)
+  - AML alerting and SAR-oriented compliance queue
+  - Audit integrity controls (hash-chain style tamper evidence)
+  - CI/CD with Bazel build/test + deployment handoff support
+
+out_of_scope_until_mvp_launch:
+  - New product lines outside payments/cards/fx (loans, wealth, remittance expansion)
+  - ML-first fraud decisioning in real-time critical path
+  - New language runtimes or extra workspaces beyond the approved six
+  - Production cutover before mandatory compliance gates are passed
+
+non_negotiables:
+  - Never store PAN or CVV in repo, logs, or databases
+  - Ledger must remain append-only; balances are derived, not primary
+  - External integrations require mTLS or HMAC and replay-safe verification
+  - All external money events require idempotency keys and duplicate-safe handling
+  - Immutable/compliance audit trail must be retained
+
+approved_workspaces:
+  - platform-java
+  - payments-core-rust
+  - crypto-engine-c
+  - connectors-go
+  - edge-node
+  - shared-contracts
+
+phase_execution_order:
+  - phase1-repo-or-workspace-bootstrap
+  - phase-2-core-ledger-and-webhook-flow
+  - phase-3-kyc-or-aml-and-onboarding
+  - phase-4-card-issuance
+  - phase-5-p2p-fx-marketplace
+  - phase-6-connectors-and-settlement-in-go-connectors
+  - phase-7-reconciliation-reporting-and-audit
+  - phase8-security-pci-and-hsm
+  - phase-10-ci-cd-and-production-launch
+
+acceptance_gates:
+  phase1-repo-or-workspace-bootstrap:
+    - All six approved workspaces are present and buildable through Bazel targets
+    - Shared contracts are generated for Java, Rust, Go, and Node
+    - CI executes bazel build/test baseline successfully
+  phase-2-core-ledger-and-webhook-flow:
+    - Deposit webhook is acknowledged quickly and processed asynchronously
+    - Duplicate webhook events do not create duplicate ledger entries
+    - Ledger balance can be derived from immutable ledger entries only
+  phase-3-kyc-or-aml-and-onboarding:
+    - Users can submit KYC and receive a persisted decision state
+    - Escalation path exists for manual enhanced review
+    - Suspicious patterns create AML alerts suitable for SAR workflow
+  phase-4-card-issuance:
+    - Card issuance works via sponsor sandbox using tokenized data only
+    - Authorization, capture, and chargeback flows write correct ledger entries
+    - No PAN/CVV storage or logging is detected
+  phase-5-p2p-fx-marketplace:
+    - Offer creation and acceptance lock funds in escrow deterministically
+    - Settlement commits atomically or reverts with compensating entries
+    - Completed trades are auditable end-to-end
+  phase-6-connectors-and-settlement-in-go-connectors:
+    - Airtel/TNM adapters support authenticated retries and poison handling
+    - Statement download and resumable processing are operational
+    - Connector outputs feed reconciliation reliably
+  phase-7-reconciliation-reporting-and-audit:
+    - Daily batch reconciliation runs and emits mismatch events
+    - Real-time reconciliation path exists for webhook-linked transactions
+    - Audit hash-chain records are generated and verifiable
+  phase8-security-pci-and-hsm:
+    - Secrets management is externalized and rotation-ready
+    - Edge protections (rate limits, request size controls, security headers) are enforced
+    - PCI scope documentation and key handling boundaries are defined
+  phase-10-ci-cd-and-production-launch:
+    - Reproducible image builds and deployment path are validated
+    - SLOs, alerts, and runbooks are in place for core failure modes
+    - Regulatory and sponsor production prerequisites are documented as passed
+
+done_definition_for_step_1:
+  - Scope is explicitly locked as above
+  - Implementation must prioritize only the ordered phases
+  - Any new feature request requires an explicit scope-change decision

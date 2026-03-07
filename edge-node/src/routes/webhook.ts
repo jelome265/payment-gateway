@@ -17,7 +17,7 @@ router.post('/deposit', verifyWebhookSignature, async (req: Request, res: Respon
         res.status(200).json({ received: true });
     } catch (error) {
         console.error('Failed to enqueue webhook:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', detail: (error as Error).message });
     }
 });
 

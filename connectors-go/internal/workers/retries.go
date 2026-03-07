@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"fmt"
 	"log"
 	"math"
@@ -48,12 +49,51 @@ func WithRetry(name string, cfg RetryConfig, fn RetryableFunc) error {
 
 // PoisonQueue represents a dead-letter queue for failed messages.
 type PoisonQueue struct {
-	Topic string
+	Topic   string
+	Brokers string
+	producer *kafka.Producer
 }
 
 // Send routes a failed message to the poison queue for manual investigation.
 func (pq *PoisonQueue) Send(connectorName string, payload []byte, err error) {
-	// In production: publish to Kafka poison-queue topic
-	log.Printf("[POISON QUEUE] connector=%s error=%v payload_size=%d topic=%s",
-		connectorName, err, len(payload), pq.Topic)
+	if pq.Brokers == "" || pq.Topic == "" {
+		log.Printf("[POISON QUEUE] connector=%s (log only) error=%v payload_size=%d topic=%s brokers=%s",
+			connectorName, err, len(payload), pq.Topic, pq.Brokers)
+		return
+	}
+
+	if pq.producer == nil {
+		p, perr := kafka.NewProducer(&kafka.ConfigMap{
+			"bootstrap.servers": pq.Brokers,
+			"enable.idempotence": true,
+			"acks": "all",
+		})
+		if perr != nil {
+			log.Printf("[POISON QUEUE] failed to init producer, falling back to log: %v", perr)
+			return
+		}
+		pq.producer = p
+	}
+
+	key := fmt.Sprintf("poison-%s-%d", connectorName, time.Now().UnixNano())
+	errStr := ""
+	if err != nil {
+		errStr = err.Error()
+	}
+
+	msg := &kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &pq.Topic, Partition: kafka.PartitionAny},
+		Key:            []byte(key),
+		Value:          payload,
+		Headers: []kafka.Header{
+			{Key: "connector", Value: []byte(connectorName)},
+			{Key: "error", Value: []byte(errStr)},
+		},
+	}
+
+	if e := pq.producer.Produce(msg, nil); e != nil {
+		log.Printf("[POISON QUEUE] produce failed, fallback log: %v", e)
+		return
+	}
+	log.Printf("[POISON QUEUE] published failed payload to topic=%s key=%s", pq.Topic, key)
 }

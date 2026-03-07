@@ -27,7 +27,7 @@ type TnmAdapter struct {
 }
 
 // NewTnmAdapter creates a new TNM connector.
-func NewTnmAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath string) (*TnmAdapter, error) {
+func NewTnmAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath, kafkaBrokers string) (*TnmAdapter, error) {
 	tlsConfig, err := buildMTLSConfig(certPath, keyPath, caPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mTLS config for TNM: %w", err)
@@ -46,7 +46,7 @@ func NewTnmAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath string)
 		apiSecret:  apiSecret,
 		httpClient: client,
 		retryConf:  workers.DefaultRetryConfig(),
-		poisonQ:    &workers.PoisonQueue{Topic: "tnm-poison-queue"},
+		poisonQ:    &workers.PoisonQueue{Topic: "tnm-poison-queue", Brokers: kafkaBrokers},
 	}, nil
 }
 

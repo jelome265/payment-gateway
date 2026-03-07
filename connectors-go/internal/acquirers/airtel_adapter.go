@@ -30,7 +30,7 @@ type AirtelAdapter struct {
 }
 
 // NewAirtelAdapter creates a new Airtel connector with mTLS client.
-func NewAirtelAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath string) (*AirtelAdapter, error) {
+func NewAirtelAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath, kafkaBrokers string) (*AirtelAdapter, error) {
 	tlsConfig, err := buildMTLSConfig(certPath, keyPath, caPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mTLS config: %w", err)
@@ -49,7 +49,7 @@ func NewAirtelAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath stri
 		apiSecret:  apiSecret,
 		httpClient: client,
 		retryConf:  workers.DefaultRetryConfig(),
-		poisonQ:    &workers.PoisonQueue{Topic: "airtel-poison-queue"},
+		poisonQ:    &workers.PoisonQueue{Topic: "airtel-poison-queue", Brokers: kafkaBrokers},
 	}, nil
 }
 
@@ -179,6 +179,10 @@ func (a *AirtelAdapter) signPayload(payload []byte) string {
 
 // buildMTLSConfig creates a TLS config with mutual TLS authentication.
 func buildMTLSConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
+	if certPath == "" || keyPath == "" || caPath == "" {
+		return nil, fmt.Errorf("mTLS cert/key/ca paths must be provided")
+	}
+
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load client cert: %w", err)

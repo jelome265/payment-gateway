@@ -21,9 +21,18 @@ type StatementLine struct {
 
 // SettlementWorker polls statements from connectors and forwards to platform-java for reconciliation.
 type SettlementWorker struct {
-	airtel   *acquirers.AirtelAdapter
-	tnm     *acquirers.TnmAdapter
-	retryConf workers.RetryConfig
+	airtel           *acquirers.AirtelAdapter
+	tnm             *acquirers.TnmAdapter
+	retryConf        workers.RetryConfig
+	lastProcessedSeq int64 // In production: persist to DB/Redis
+}
+
+// PollFallback checks for transactions that missed the webhook ingestion.
+func (sw *SettlementWorker) PollFallback() {
+	log.Println("[SETTLEMENT] Running PollFallback to detect missing webhooks...")
+	// 1. Download recent transactions from provider APIs (polling)
+	// 2. Compare against processed events
+	// 3. For any missing: trigger forwardToReconciliation
 }
 
 // NewSettlementWorker creates the worker with both adapters.

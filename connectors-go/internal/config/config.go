@@ -17,6 +17,8 @@ type Config struct {
 	TLSCACertPath    string
 	MaxRetries       int
 	PoisonQueueTopic string
+	RedisAddr        string
+	IdempotencyTTL   int
 }
 
 func Load() *Config {
@@ -33,6 +35,8 @@ func Load() *Config {
 		TLSCACertPath:    getEnv("TLS_CA_CERT_PATH", "/etc/certs/ca.pem"),
 		MaxRetries:       5,
 		PoisonQueueTopic: "connector-poison-queue",
+		RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
+		IdempotencyTTL:   86400,
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"time"
+	"github.com/jelome265/connectors-go/internal/observability"
 )
 
 // RetryConfig holds retry parameters for connector operations.
@@ -27,7 +28,7 @@ type RetryableFunc func() error
 
 // WithRetry executes fn with exponential backoff. If all retries fail,
 // returns the last error so the caller can route to the poison queue.
-func WithRetry(name string, cfg RetryConfig, fn RetryableFunc) error {
+func WithRetry(provider, operation string, cfg RetryConfig, fn RetryableFunc) error {
 	var lastErr error
 	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
 		lastErr = fn()
@@ -36,15 +37,16 @@ func WithRetry(name string, cfg RetryConfig, fn RetryableFunc) error {
 		}
 
 		if attempt < cfg.MaxRetries {
+			observability.RetryCountTotal.WithLabelValues(provider, operation).Inc()
 			backoff := time.Duration(math.Pow(2, float64(attempt))) * cfg.InitialBackoff
-			log.Printf("[RETRY] %s: attempt %d/%d failed: %v. Retrying in %v",
-				name, attempt+1, cfg.MaxRetries, lastErr, backoff)
+			log.Printf("[RETRY] %s/%s: attempt %d/%d failed: %v. Retrying in %v",
+				provider, operation, attempt+1, cfg.MaxRetries, lastErr, backoff)
 			time.Sleep(backoff)
 		}
 	}
 
-	log.Printf("[POISON] %s: all %d retries exhausted. Last error: %v", name, cfg.MaxRetries, lastErr)
-	return fmt.Errorf("all retries exhausted for %s: %w", name, lastErr)
+	log.Printf("[POISON] %s/%s: all %d retries exhausted. Last error: %v", provider, operation, cfg.MaxRetries, lastErr)
+	return fmt.Errorf("all retries exhausted for %s/%s: %w", provider, operation, lastErr)
 }
 
 // PoisonQueue represents a dead-letter queue for failed messages.

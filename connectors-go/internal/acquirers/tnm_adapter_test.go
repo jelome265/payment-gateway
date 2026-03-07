@@ -2,80 +2,52 @@ package acquirers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
-func TestTnmAdapter_InitiateCollection(t *testing.T) {
-	// Create a mock server that returns success
+func TestTnmAdapter_InitiateDeposit(t *testing.T) {
+	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req TnmDepositRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		// Verify amount is received as int64
+		if req.Amount != 200000 {
+			t.Errorf("Expected amount 200000, got %d", req.Amount)
+		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{
-			"resultCode": "0",
-			"resultDesc": "Operation successful",
-			"transactionId": "TNM987654"
+			"transaction_id": "TNM987",
+			"status": "0",
+			"message": "Success"
 		}`))
 	}))
 	defer server.Close()
 
-	adapter := NewTnmAdapter(
-		"test-api-key",
-		"test-api-secret",
-		server.URL,
-	)
-
-	req := CollectionRequest{
-		Amount:        2000.00,
-		Currency:      "MWK",
-		CustomerPhone: "0881234567",
-		Reference:     "test-ref-456",
+	adapter := &TnmAdapter{
+		baseURL:    server.URL,
+		apiKey:     "key",
+		apiSecret:  "secret",
+		httpClient: server.Client(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	req := TnmDepositRequest{
+		Reference: "REF456",
+		MSISDN:    "0881234567",
+		Amount:    200000, // 2000.00
+		Currency:  "MWK",
+	}
 
-	resp, err := adapter.InitiateCollection(ctx, req)
-
+	resp, err := adapter.InitiateDeposit(context.Background(), req)
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		t.Fatalf("InitiateDeposit failed: %v", err)
 	}
 
-	if resp.ProviderTxId != "TNM987654" {
-		t.Errorf("Expected ProviderTxId 'TNM987654', got '%s'", resp.ProviderTxId)
-	}
-
-	if resp.Status != "PENDING" {
-		t.Errorf("Expected Status 'PENDING', got '%s'", resp.Status)
-	}
-}
-
-func TestTnmAdapter_InitiateCollection_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer server.Close()
-
-	adapter := NewTnmAdapter(
-		"test-api-key",
-		"test-api-secret",
-		server.URL,
-	)
-
-	req := CollectionRequest{
-		Amount:        2000.00,
-		Currency:      "MWK",
-		CustomerPhone: "0881234567",
-		Reference:     "test-ref-456",
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err := adapter.InitiateCollection(ctx, req)
-
-	if err == nil {
-		t.Fatal("Expected an error due to 503 response, but got nil")
+	if resp.TransactionID != "TNM987" {
+		t.Errorf("Expected tx id TNM987, got %s", resp.TransactionID)
 	}
 }

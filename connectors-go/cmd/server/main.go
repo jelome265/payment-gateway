@@ -13,9 +13,11 @@ import (
 	"github.com/jelome265/connectors-go/internal/observability"
 	"github.com/jelome265/connectors-go/internal/settlement"
 	"github.com/redis/go-redis/v9"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
+	observability.InitStructuredLogging()
 	cfg := config.Load()
 	log.Println("[CONNECTORS-GO] Starting connector service...")
 	if cfg.AirtelAPIKey == "" || cfg.AirtelAPISecret == "" {
@@ -78,7 +80,6 @@ func main() {
 	mux.HandleFunc("/webhooks/tnm", webhookHandler.HandleTnmWebhook)
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		observability.Global.LastHealthCheck = time.Now()
 		redisStatus := "disabled"
 		if redisClient != nil {
 			if err := redisClient.Ping(context.Background()).Err(); err != nil {
@@ -91,17 +92,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "connectors-go", "redis": redisStatus})
 	})
 
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		observability.Global.Snapshot()
-		w.WriteHeader(200)
-		json.NewEncoder(w).Encode(map[string]int64{
-			"deposit_attempts":  observability.Global.DepositAttempts.Load(),
-			"deposit_successes": observability.Global.DepositSuccesses.Load(),
-			"deposit_failures":  observability.Global.DepositFailures.Load(),
-			"retry_count":       observability.Global.RetryCount.Load(),
-			"poison_queue":      observability.Global.PoisonQueueCount.Load(),
-		})
-	})
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Trigger manual settlement run (admin)
 	mux.HandleFunc("/admin/settlement/run", func(w http.ResponseWriter, r *http.Request) {

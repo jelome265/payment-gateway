@@ -12,11 +12,11 @@ import (
 
 // StatementLine represents a single line item from a provider statement.
 type StatementLine struct {
-	ProviderTxID string  `json:"provider_tx_id"`
-	Amount       float64 `json:"amount"`
-	Currency     string  `json:"currency"`
-	Timestamp    string  `json:"timestamp"`
-	Reference    string  `json:"reference"`
+	ProviderTxID string `json:"provider_tx_id"`
+	Amount       int64  `json:"amount"` // Minor units
+	Currency     string `json:"currency"`
+	Timestamp    string `json:"timestamp"`
+	Reference    string `json:"reference"`
 }
 
 // SettlementWorker polls statements from connectors and forwards to platform-java for reconciliation.
@@ -80,7 +80,7 @@ func (sw *SettlementWorker) processStatement(provider string, data []byte) {
 	for _, line := range lines {
 		// In production: publish each line to Kafka topic "reconciliation-statements"
 		// for platform-java ReconciliationService to consume.
-		log.Printf("[SETTLEMENT] %s line: tx=%s amount=%.2f %s ref=%s",
+		log.Printf("[SETTLEMENT] %s line: tx=%s amount=%d %s ref=%s",
 			provider, line.ProviderTxID, line.Amount, line.Currency, line.Reference)
 		sw.forwardToReconciliation(provider, line)
 	}

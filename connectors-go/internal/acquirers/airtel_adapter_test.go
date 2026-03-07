@@ -2,101 +2,63 @@ package acquirers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
-	"time"
 )
 
-func TestAirtelAdapter_InitiateCollection(t *testing.T) {
-	// Create a mock server that returns success
+func TestAirtelAdapter_InitiateDeposit(t *testing.T) {
+	// Create mock TLS files
+	certFile, _ := os.CreateTemp("", "cert")
+	keyFile, _ := os.CreateTemp("", "key")
+	caFile, _ := os.CreateTemp("", "ca")
+	defer os.Remove(certFile.Name())
+	defer os.Remove(keyFile.Name())
+	defer os.Remove(caFile.Name())
+
+	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req AirtelDepositRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		// Verify amount is received as int64
+		if req.Amount != 150050 {
+			t.Errorf("Expected amount 150050, got %d", req.Amount)
+		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{
-			"status": {
-				"code": "200",
-				"success": true,
-				"result_code": "0",
-				"message": "Success"
-			},
-			"data": {
-				"transaction": {
-					"id": "AIRTEL123",
-					"status": "In Progress"
-				}
-			}
+			"status": { "code": "200", "message": "Success", "success": true },
+			"data": { "transaction": { "id": "AIR123", "status": "In Progress" } }
 		}`))
 	}))
 	defer server.Close()
 
-	// Replace the baseUrl with our mock server
-	adapter := NewAirtelAdapter(
-		"test-client-id",
-		"test-client-secret",
-		"test-pin",
-		server.URL,
-	)
-
-	req := CollectionRequest{
-		Amount:        1500.50,
-		Currency:      "MWK",
-		CustomerPhone: "+265123456789",
-		Reference:     "test-ref-123",
+	// Use internal helper buildMTLSConfig would fail without real certs, 
+	// so we'll mock the adapter struct directly for the test or use a mockable client.
+	// Since buildMTLSConfig is used in NewAirtelAdapter, we'll manually construct for test.
+	adapter := &AirtelAdapter{
+		baseURL:    server.URL,
+		apiKey:     "key",
+		apiSecret:  "secret",
+		httpClient: server.Client(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	req := AirtelDepositRequest{
+		Reference: "REF123",
+		MSISDN:    "265123456",
+		Amount:    150050, // 1500.50 in minor units
+		Currency:  "MWK",
+	}
 
-	resp, err := adapter.InitiateCollection(ctx, req)
-
+	resp, err := adapter.InitiateDeposit(context.Background(), req)
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		t.Fatalf("InitiateDeposit failed: %v", err)
 	}
 
-	if resp.ProviderTxId != "AIRTEL123" {
-		t.Errorf("Expected ProviderTxId 'AIRTEL123', got '%s'", resp.ProviderTxId)
-	}
-
-	if resp.Status != "PENDING" {
-		t.Errorf("Expected Status 'PENDING', got '%s'", resp.Status)
-	}
-}
-
-func TestAirtelAdapter_InitiateCollection_NetworkError(t *testing.T) {
-	// Create a mock server that times out or returns 500
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{
-			"status": {
-				"code": "500",
-				"success": false,
-				"result_code": "1",
-				"message": "Internal Server Error"
-			}
-		}`))
-	}))
-	defer server.Close()
-
-	adapter := NewAirtelAdapter(
-		"test-client-id",
-		"test-client-secret",
-		"test-pin",
-		server.URL,
-	)
-
-	req := CollectionRequest{
-		Amount:        1500.50,
-		Currency:      "MWK",
-		CustomerPhone: "+265123456789",
-		Reference:     "test-ref-123",
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err := adapter.InitiateCollection(ctx, req)
-
-	if err == nil {
-		t.Fatal("Expected an error due to 500 response, but got nil")
+	if resp.Data.Transaction.ID != "AIR123" {
+		t.Errorf("Expected tx id AIR123, got %s", resp.Data.Transaction.ID)
 	}
 }

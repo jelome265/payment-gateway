@@ -68,7 +68,7 @@ services:
     ports:
       - "8200:8200"
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_TOKEN:-dev-only-token}
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_TOKEN}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
     cap_add:
       - IPC_LOCK
@@ -91,6 +91,8 @@ services:
       - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
       - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
       - SPRING_KAFKA_BOOTSTRAPSERVERS=kafka:29092
+      - JWT_PRIVATE_KEY_PATH=${JWT_PRIVATE_KEY_PATH}
+      - JWT_PUBLIC_KEY_PATH=${JWT_PUBLIC_KEY_PATH}
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,6 +110,7 @@ services:
       - KAFKA_BROKERS=kafka:29092
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
     depends_on:
       kafka:
         condition: service_healthy
@@ -147,6 +150,9 @@ services:
     container_name: crypto-engine-c
     ports:
       - "8083:8080" # Hypothetical gRPC port if exposed
+    environment:
+      - HSM_PIN=${HSM_PIN}
+      - HSM_SLOT=${HSM_SLOT}
 
 volumes:
   pgdata:

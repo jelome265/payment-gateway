@@ -259,4 +259,50 @@ mod tests {
         assert_eq!(book.bid_count(), 1);
         assert_eq!(book.ask_count(), 1);
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_total_quantity_invariant(
+            prices in prop::collection::vec(1..10000i64, 1..50),
+            quantities in prop::collection::vec(1..1000i64, 1..50),
+            sides in prop::collection::vec(prop_oneof![Just(Side::Buy), Just(Side::Sell)], 1..50)
+        ) {
+            let mut book = Orderbook::new("TEST/PAIR");
+            let mut total_submitted_qty = 0;
+            let mut total_matched_qty = 0;
+
+            let n = prices.len().min(quantities.len()).min(sides.len());
+
+            for i in 0..n {
+                let qty = quantities[i];
+                total_submitted_qty += qty;
+                let order = Order {
+                    id: format!("o{}", i),
+                    user_id: "user".into(),
+                    side: sides[i].clone(),
+                    price: prices[i],
+                    quantity: qty,
+                    remaining: qty,
+                    timestamp: 0,
+                };
+                let trades = book.submit_order(order);
+                for trade in trades {
+                    total_matched_qty += trade.quantity * 2; // Each match consumes quantity from 2 orders
+                }
+            }
+
+            let mut resting_qty = 0;
+            for (_, order) in book.bids.iter() {
+                resting_qty += order.remaining;
+            }
+            for (_, order) in book.asks.iter() {
+                resting_qty += order.remaining;
+            }
+
+            // Invariant: Total Qty Submitted = Total Qty Matched + Total Qty Resting
+            prop_assert_eq!(total_submitted_qty, total_matched_qty / 2 + resting_qty);
+        }
+    }
 }

@@ -69,24 +69,32 @@ func (a *KycAdapter) VerifyIdentity(req KycRequest) (*KycResponse, error) {
 
 // Internal HTTP helper for actual API calls
 func (a *KycAdapter) post(endpoint string, payload interface{}) ([]byte, error) {
-	data, _ := json.Marshal(payload)
-	req, _ := http.NewRequest("POST", a.BaseURL+endpoint, bytes.NewBuffer(data))
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal kyc payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", a.BaseURL+endpoint, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kyc request: %w", err)
+	}
+
 	req.Header.Set("Authorization", "Bearer "+a.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.Client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("kyc provider request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("provider returned status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("kyc provider returned status: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, fmt.Errorf("failed to read kyc response body: %w", err)
 	}
 
 	return body, nil

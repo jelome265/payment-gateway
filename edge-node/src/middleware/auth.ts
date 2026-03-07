@@ -1,18 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+if (!WEBHOOK_SECRET) {
+    throw new Error('FATAL: WEBHOOK_SECRET environment variable is not set.');
+}
+
 const SIGNATURE_HEADER = process.env.WEBHOOK_SIGNATURE_HEADER || 'x-webhook-signature';
 const IDEMPOTENCY_HEADER = process.env.WEBHOOK_IDEMPOTENCY_HEADER || 'x-idempotency-key';
 const TIMESTAMP_HEADER = process.env.WEBHOOK_TIMESTAMP_HEADER || 'x-webhook-timestamp';
 const MAX_SKEW_MS = parseInt(process.env.WEBHOOK_MAX_SKEW_MS || '300000'); // 5 minutes
 
 export const verifyWebhookSignature = (req: Request, res: Response, next: NextFunction): void => {
-    if (!WEBHOOK_SECRET) {
-        res.status(500).json({ error: 'Webhook secret not configured' });
-        return;
-    }
-
     const signature = req.headers[SIGNATURE_HEADER] as string | undefined;
     const idempotencyKey = req.headers[IDEMPOTENCY_HEADER] as string | undefined;
     const timestamp = req.headers[TIMESTAMP_HEADER] as string | undefined;

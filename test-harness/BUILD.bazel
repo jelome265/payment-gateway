@@ -1,0 +1,32 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@io_bazel_rules_docker//go:image.bzl", "go_image")
+
+sh_binary(
+    name = "commit",
+    srcs = ["scripts/bazel_commit.sh"],
+    visibility = ["//visibility:public"],
+)
+
+go_binary(
+    name = "mock-acquirer",
+    srcs = ["go/mock-acquirer/main.go"],
+)
+
+go_binary(
+    name = "load-tester",
+    srcs = ["go/load-tester/main.go"],
+)
+
+go_image(
+    name = "mock-acquirer-image",
+    binary = ":mock-acquirer",
+    visibility = ["//visibility:public"],
+)
+
+go_image(
+    name = "load-tester-image",
+    binary = ":load-tester",
+    visibility = ["//visibility:public"],
+)
+
+

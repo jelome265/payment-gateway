@@ -1,5 +1,5 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@io_bazel_rules_docker//rust:image.bzl", "rust_image")
+load("@crates//:defs.bzl", "all_crate_deps")
 
 sh_binary(
     name = "commit",
@@ -11,24 +11,27 @@ rust_library(
     name = "matching-engine-lib",
     srcs = ["src/matching_engine.rs"],
     edition = "2021",
+    deps = all_crate_deps(
+        normal = True,
+    ),
+    visibility = ["//visibility:public"],
 )
 
 rust_binary(
     name = "matching-engine",
     srcs = ["src/main.rs"],
-    deps = [":matching-engine-lib"],
     edition = "2021",
+    deps = [
+        ":matching-engine-lib",
+    ] + all_crate_deps(
+        normal = True,
+    ),
 )
 
 rust_test(
     name = "matching-engine-test",
     crate = ":matching-engine-lib",
+    deps = all_crate_deps(
+        normal_dev = True,
+    ),
 )
-
-rust_image(
-    name = "image",
-    binary = ":matching-engine",
-    visibility = ["//visibility:public"],
-)
-
-

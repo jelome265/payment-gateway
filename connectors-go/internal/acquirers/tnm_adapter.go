@@ -2,16 +2,18 @@ package acquirers
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/jelome265/connectors-go/internal/observability"
 	"github.com/jelome265/connectors-go/internal/workers"
 )
 
@@ -52,11 +54,11 @@ func NewTnmAdapter(baseURL, apiKey, apiSecret, certPath, keyPath, caPath, kafkaB
 
 // TnmDepositRequest represents a deposit/collection request to TNM Mpamba.
 type TnmDepositRequest struct {
-	Reference string  `json:"reference"`
-	MSISDN    string  `json:"msisdn"`
-	Amount    float64 `json:"amount"`
-	Currency  string  `json:"currency"`
-	Narration string  `json:"narration"`
+	Reference string `json:"reference"`
+	MSISDN    string `json:"msisdn"`
+	Amount    int64  `json:"amount"` // Minor units
+	Currency  string `json:"currency"`
+	Narration string `json:"narration"`
 }
 
 // TnmDepositResponse represents the TNM API response.
@@ -68,14 +70,19 @@ type TnmDepositResponse struct {
 
 // InitiateDeposit sends a collection request to TNM Mpamba.
 // Uses at-least-once delivery with deduplication by reference/event_id.
-func (t *TnmAdapter) InitiateDeposit(req TnmDepositRequest) (*TnmDepositResponse, error) {
+func (t *TnmAdapter) InitiateDeposit(ctx context.Context, req TnmDepositRequest) (*TnmDepositResponse, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal TNM request: %w", err)
 	}
 
 	var resp TnmDepositResponse
-	err = workers.WithRetry("tnm-deposit", t.retryConf, func() error {
+	err = workers.WithRetry("tnm", "deposit", t.retryConf, func() error {
+		start := time.Now()
+		defer func() {
+			observability.RequestDurationSeconds.WithLabelValues("tnm", "deposit").Observe(time.Since(start).Seconds())
+		}()
+
 		httpReq, err := http.NewRequest("POST", t.baseURL+"/api/v1/collections", bytes.NewReader(payload))
 		if err != nil {
 			return err
@@ -86,9 +93,14 @@ func (t *TnmAdapter) InitiateDeposit(req TnmDepositRequest) (*TnmDepositResponse
 		httpReq.Header.Set("Authorization", "Bearer "+t.apiKey)
 		httpReq.Header.Set("X-Signature", signature)
 		httpReq.Header.Set("X-Idempotency-Key", req.Reference)
+		
+		if cid := observability.CorrelationIDFromContext(ctx); cid != "" {
+			httpReq.Header.Set("X-Correlation-ID", cid)
+		}
 
 		httpResp, err := t.httpClient.Do(httpReq)
 		if err != nil {
+			observability.OutboundRequestsTotal.WithLabelValues("tnm", "deposit", "network_error").Inc()
 			return fmt.Errorf("TNM HTTP request failed: %w", err)
 		}
 		defer httpResp.Body.Close()
@@ -99,29 +111,38 @@ func (t *TnmAdapter) InitiateDeposit(req TnmDepositRequest) (*TnmDepositResponse
 		}
 
 		if httpResp.StatusCode >= 500 {
+			observability.OutboundRequestsTotal.WithLabelValues("tnm", "deposit", "server_error").Inc()
 			return fmt.Errorf("TNM server error %d: %s", httpResp.StatusCode, string(body))
+		}
+
+		if httpResp.StatusCode >= 400 {
+			observability.OutboundRequestsTotal.WithLabelValues("tnm", "deposit", "client_error").Inc()
 		}
 
 		if err := json.Unmarshal(body, &resp); err != nil {
 			return fmt.Errorf("failed to parse TNM response: %w", err)
 		}
 
+		observability.OutboundRequestsTotal.WithLabelValues("tnm", "deposit", "success").Inc()
 		return nil
 	})
 
 	if err != nil {
+		observability.PoisonQueueTotal.WithLabelValues("tnm", "deposit").Inc()
 		t.poisonQ.Send("tnm-deposit", payload, err)
 		return nil, err
 	}
 
-	log.Printf("[TNM] Deposit initiated: ref=%s tx_id=%s", req.Reference, resp.TransactionID)
+	slog.InfoContext(ctx, "[TNM] Deposit initiated", 
+		slog.String("ref", req.Reference), 
+		slog.String("tx_id", resp.TransactionID))
 	return &resp, nil
 }
 
 // DownloadStatement retrieves settlement statements for reconciliation.
-func (t *TnmAdapter) DownloadStatement(date string) ([]byte, error) {
+func (t *TnmAdapter) DownloadStatement(ctx context.Context, date string) ([]byte, error) {
 	var result []byte
-	err := workers.WithRetry("tnm-statement", t.retryConf, func() error {
+	err := workers.WithRetry("tnm", "statement", t.retryConf, func() error {
 		url := fmt.Sprintf("%s/api/v1/statements?date=%s", t.baseURL, date)
 		httpReq, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -130,6 +151,10 @@ func (t *TnmAdapter) DownloadStatement(date string) ([]byte, error) {
 
 		httpReq.Header.Set("Authorization", "Bearer "+t.apiKey)
 		httpReq.Header.Set("X-Signature", t.signPayload([]byte(date)))
+		
+		if cid := observability.CorrelationIDFromContext(ctx); cid != "" {
+			httpReq.Header.Set("X-Correlation-ID", cid)
+		}
 
 		httpResp, err := t.httpClient.Do(httpReq)
 		if err != nil {
